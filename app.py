@@ -2,11 +2,11 @@ import streamlit as st
 import sqlite3
 from datetime import datetime
 import urllib.parse
+import os
 
-# Ruta segura en tu carpeta de usuario
-DB_RUTA = r"C:\Users\ANGEL\mototaxi_pueblo.db"
+# Ruta automática que funciona en cualquier lugar sin dar error
+DB_RUTA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mototaxi_pueblo.db")
 
-# Inicializar Base de Datos
 def inicializar_bd():
     conexion = sqlite3.connect(DB_RUTA)
     cursor = conexion.cursor()
@@ -30,6 +30,7 @@ def inicializar_bd():
             comision_app REAL NOT NULL,
             ganancia_conductor REAL NOT NULL,
             conductor_id INTEGER,
+            estado TEXT DEFAULT 'En Curso',
             fecha TEXT,
             FOREIGN KEY (conductor_id) REFERENCES conductores (id)
         )
@@ -39,19 +40,14 @@ def inicializar_bd():
 
 inicializar_bd()
 
-# Configuración de la página web
-st.set_page_config(page_title="Mototaxi El Pueblo", page_icon="🛵", layout="centered")
+st.set_page_config(page_title="Tinaco Express", page_icon="🛵", layout="centered")
+st.title("🛵 Tinaco Express - Central")
+st.subheader("Control de Flota y Envíos")
 
-st.title("🛵 Sistema de Mototaxi & Delivery")
-st.subheader("¡El transporte oficial de nuestro pueblo!")
+menu = st.sidebar.selectbox("Menú de Opciones", ["Registrar Nuevo Viaje", "Viajes Activos (En Curso)", "Historial y Caja", "Gestionar Conductores"])
 
-# Menú lateral
-menu = st.sidebar.selectbox("Menú de Opciones", ["Registrar Viaje / Pedido", "Ver Historial y Ganancias", "Gestionar Conductores"])
-
-# --- OPCIÓN 1: REGISTRAR VIAJE ---
-if menu == "Registrar Viaje / Pedido":
-    st.header("📝 Nuevo Servicio")
-    
+if menu == "Registrar Nuevo Viaje":
+    st.header("📝 Nuevo Servicio / Pedido")
     conexion = sqlite3.connect(DB_RUTA)
     cursor = conexion.cursor()
     cursor.execute("SELECT id, nombre, placa FROM conductores")
@@ -59,65 +55,74 @@ if menu == "Registrar Viaje / Pedido":
     conexion.close()
     
     if not conductores:
-        st.warning("⚠️ No hay conductores registrados todavía. Ve al menú 'Gestionar Conductores' para agregar al menos uno.")
+        st.warning("⚠️ Registra a tus 3 motorizados en 'Gestionar Conductores' primero.")
     else:
         with st.form("form_viaje"):
             cliente = st.text_input("Nombre del Cliente")
             tel_cliente = st.text_input("Teléfono del Cliente")
-            origen = st.text_input("Punto de Partida (Ej. Parque Central, Tienda de Don Pepe)")
-            destino = st.text_input("Punto de Destino (Ej. Barrio San Juan, Calle 4)")
+            origen = st.text_input("Punto de Partida (Ej. Centro, Los Mangos)")
+            destino = st.text_input("Punto de Destino")
             tipo_servicio = st.selectbox("Tipo de Servicio", ["Transporte de Personas", "Delivery / Mandados"])
             tarifa = st.number_input("Tarifa Total ($)", min_value=0.0, step=0.50)
             
             conductor_dict = {f"{c[1]} (Placa: {c[2]})": c[0] for c in conductores}
-            conductor_seleccionado = st.selectbox("Asignar Conductor", list(conductor_dict.keys()))
+            conductor_seleccionado = st.selectbox("Asignar Motorizado", list(conductor_dict.keys()))
             
-            submit = st.form_submit_button("🚀 Registrar y Generar Ruta")
+            submit = st.form_submit_button("🚀 Despachar y Generar Ruta")
             
-            if submit:
-                if cliente and origen and destino and tarifa > 0:
-                    c_id = conductor_dict[conductor_seleccionado]
-                    comision = tarifa * 0.15 
-                    pago_cond = tarifa - comision
-                    fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    
-                    conexion = sqlite3.connect(DB_RUTA)
-                    cursor = conexion.cursor()
-                    cursor.execute("""
-                        INSERT INTO viajes (cliente, telefono_cliente, origen, destino, tipo_servicio, tarifa, comision_app, ganancia_conductor, conductor_id, fecha)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (cliente, tel_cliente, origen, destino, tipo_servicio, tarifa, comision, pago_cond, c_id, fecha))
-                    conexion.commit()
-                    conexion.close()
-                    
-                    st.success("¡Viaje registrado con éxito!")
-                    
-                    st.markdown("---")
-                    st.markdown(f"### 💰 Resumen Financiero")
-                    st.info(f"**Tarifa Total:** ${tarifa:.2f}\n\n🏢 **Tu Comisión (15%):** ${comision:.2f}\n\n🛵 **Para el Conductor:** ${pago_cond:.2f}")
-                    
-                    link_maps = f"https://www.google.com/maps/dir/?api=1&destination={urllib.parse.quote(destino)}&origin={urllib.parse.quote(origen)}"
-                    
-                    st.markdown(f"### 🗺️ Navegación Exacta")
-                    st.markdown(f"Mándale este enlace al conductor para que le abra el mapa directo en su celular:")
-                    st.markdown(f"[🔗 Abrir Ruta en Google Maps]({link_maps})")
-                else:
-                    st.error("Por favor completa todos los campos obligatorios y asegúrate de que la tarifa sea mayor a 0.")
+            if submit and cliente and origen and destino and tarifa > 0:
+                c_id = conductor_dict[conductor_seleccionado]
+                comision = tarifa * 0.15
+                pago_cond = tarifa - comision
+                fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+                
+                conexion = sqlite3.connect(DB_RUTA)
+                cursor = conexion.cursor()
+                cursor.execute("""
+                    INSERT INTO viajes (cliente, telefono_cliente, origen, destino, tipo_servicio, tarifa, comision_app, ganancia_conductor, conductor_id, estado, fecha)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'En Curso', ?)
+                """, (cliente, tel_cliente, origen, destino, tipo_servicio, tarifa, comision, pago_cond, c_id, fecha))
+                conexion.commit()
+                conexion.close()
+                
+                st.success("¡Viaje despachado con éxito!")
+                st.info(f"**Tarifa:** ${tarifa:.2f} | 🏢 **Tu 15%:** ${comision:.2f} | 🛵 **Motorizado:** ${pago_cond:.2f}")
+                
+                link_maps = f"https://www.google.com/maps/dir/?api=1&destination={urllib.parse.quote(destino)}&origin={urllib.parse.quote(origen)}"
+                st.markdown(f"[🔗 Enviar Ruta en Google Maps al Motorizado]({link_maps})")
 
-# --- OPCIÓN 2: HISTORIAL Y GANANCIAS ---
-elif menu == "Ver Historial y Ganancias":
-    st.header("📊 Historial de Viajes y Caja")
-    
+elif menu == "Viajes Activos (En Curso)":
+    st.header("⚡ Viajes Activos en Tinaco")
     conexion = sqlite3.connect(DB_RUTA)
     cursor = conexion.cursor()
     cursor.execute("""
-        SELECT v.id, v.cliente, v.origen, v.destino, v.tarifa, v.comision_app, c.nombre, v.fecha 
+        SELECT v.id, v.cliente, v.origen, v.destino, v.tarifa, c.nombre, v.fecha 
         FROM viajes v LEFT JOIN conductores c ON v.conductor_id = c.id
+        WHERE v.estado = 'En Curso'
         ORDER BY v.id DESC
     """)
-    viajes = cursor.fetchall()
+    viajes_activos = cursor.fetchall()
+    conexion.close()
     
-    cursor.execute("SELECT SUM(tarifa), SUM(comision_app) FROM viajes")
+    if not viajes_activos:
+        st.info("No hay viajes en curso en este momento.")
+    else:
+        for v in viajes_activos:
+            st.markdown(f"### Viaje #{v[0]} - Cliente: {v[1]}\n* 📍 `{v[2]}` ➡️ `{v[3]}`\n* 💵 `${v[4]:.2f}` | 🛵 {v[5]}")
+            if st.button(f"✅ Confirmar Entrega #{v[0]}", key=f"btn_{v[0]}"):
+                conexion = sqlite3.connect(DB_RUTA)
+                cursor = conexion.cursor()
+                cursor.execute("UPDATE viajes SET estado = 'Entregado' WHERE id = ?", (v[0],))
+                conexion.commit()
+                conexion.close()
+                st.success("¡Entrega confirmada!")
+                st.rerun()
+
+elif menu == "Historial y Caja":
+    st.header("📊 Historial y Caja")
+    conexion = sqlite3.connect(DB_RUTA)
+    cursor = conexion.cursor()
+    cursor.execute("SELECT SUM(tarifa), SUM(comision_app) FROM viajes WHERE estado = 'Entregado'")
     totales = cursor.fetchone()
     conexion.close()
     
@@ -125,55 +130,19 @@ elif menu == "Ver Historial y Ganancias":
     total_comision = totales[1] if totales[1] else 0.0
     
     col1, col2 = st.columns(2)
-    col1.metric("Dinero Movido en el Pueblo", f"${total_recaudado:.2f}")
-    col2.metric("Tus Ganancias Totales (15%)", f"${total_comision:.2f}")
-    
-    st.markdown("---")
-    st.subheader("📋 Lista de Servicios Realizados")
-    
-    if not viajes:
-        st.info("Aún no hay viajes registrados.")
-    else:
-        for v in viajes:
-            st.markdown(f"""
-            * **ID #{v[0]}** | Cliente: **{v[1]}**
-              * 📍 Ruta: `{v[2]}` ➡️ `{v[3]}`
-              * 💵 Tarifa: **${v[4]:.2f}** (Tu comisión: ${v[5]:.2f})
-              * 🛵 Conductor: {v[6]} | ⏰ {v[7]}
-            """)
-            st.markdown("---")
+    col1.metric("Total Recaudado", f"${total_recaudado:.2f}")
+    col2.metric("Tus Ganancias (15%)", f"${total_comision:.2f}")
 
-# --- OPCIÓN 3: GESTIONAR CONDUCTORES ---
 elif menu == "Gestionar Conductores":
-    st.header("👥 Gestión de Conductores")
-    
+    st.header("👥 Mis 3 Motorizados")
     with st.form("form_conductor"):
-        nombre = st.text_input("Nombre del Conductor")
-        telefono = st.text_input("Teléfono / WhatsApp")
-        placa = st.text_input("Placa de la Moto")
-        submitted = st.form_submit_button("Registrar Conductor")
-        
-        if submitted:
-            if nombre and telefono and placa:
-                conexion = sqlite3.connect(DB_RUTA)
-                cursor = conexion.cursor()
-                cursor.execute("INSERT INTO conductores (nombre, telefono, placa) VALUES (?, ?, ?)", (nombre, telefono, placa))
-                conexion.commit()
-                conexion.close()
-                st.success(f"¡Conductor {nombre} agregado con éxito!")
-            else:
-                st.error("Completa todos los campos del conductor.")
-                
-    st.markdown("---")
-    st.subheader("Conductores Actuales en la Red")
-    conexion = sqlite3.connect(DB_RUTA)
-    cursor = conexion.cursor()
-    cursor.execute("SELECT id, nombre, telefono, placa FROM conductores")
-    conds = cursor.fetchall()
-    conexion.close()
-    
-    if not conds:
-        st.info("No hay conductores registrados.")
-    else:
-        for c in conds:
-            st.text(f"ID: {c[0]} | Nombre: {c[1]} | Tel: {c[2]} | Placa: {c[3]}")
+        nombre = st.text_input("Nombre")
+        telefono = st.text_input("Teléfono")
+        placa = st.text_input("Placa")
+        if st.form_submit_button("Registrar Motorizado") and nombre and telefono and placa:
+            conexion = sqlite3.connect(DB_RUTA)
+            cursor = conexion.cursor()
+            cursor.execute("INSERT INTO conductores (nombre, telefono, placa) VALUES (?, ?, ?)", (nombre, telefono, placa))
+            conexion.commit()
+            conexion.close()
+            st.success(f"¡Motorizado {nombre} guardado!")
